@@ -1,0 +1,977 @@
+-- LocalScript: Gerador de Teleporte (vidro, arrastável, minimizável, sons, 3 idiomas)
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local MarketplaceService = game:GetService("MarketplaceService")
+local Debris = game:GetService("Debris")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local parent = (gethui and gethui()) or playerGui
+
+-- ========== SONS ==========
+local SND = {
+	hover   = "rbxasset://sounds/electronicpingshort.wav",
+	click   = "rbxasset://sounds/snap.wav",
+	open    = "rbxasset://sounds/swoosh.wav",
+	success = "rbxasset://sounds/electronicpingshort.wav",
+	copy    = "rbxasset://sounds/snap.wav",
+	error   = "rbxasset://sounds/bass.wav",
+	hole    = "rbxasset://sounds/uuhhh.mp3",
+	boom    = "rbxasset://sounds/Rocket shot.wav",
+}
+
+-- ========== CONFIG VISUAL ==========
+local W, H = 330, 275
+local FULL_SIZE = UDim2.fromOffset(W, H)
+local MIN_SIZE = UDim2.fromOffset(W, 36)
+local GLASS = Color3.fromRGB(20, 26, 40)
+local ACCENT = Color3.fromRGB(120, 200, 255)
+local TEXT = Color3.fromRGB(235, 240, 255)
+local MUTED = Color3.fromRGB(160, 170, 190)
+local RED = Color3.fromRGB(255, 70, 70)
+local ERROR = Color3.fromRGB(255, 120, 120)
+local GREEN = Color3.fromRGB(120, 255, 140)
+
+-- ========== TRADUÇÕES ==========
+local T = {
+	pt = {
+		langTitle = "Escolha o idioma",
+		tutTitle = "Como usar",
+		genTitle = "Gerador de Teleporte",
+		tutText = [[Jogador, Irei ensinar como este script funciona.
+
+A barrinha de digitar: Digite o nome do jogo, para não ficar perdido.
+
+Como funciona: no começo tem um botão chamado "Gerar script". Aperte nele somente UMA vez, e depois aperte em Copiar script. Nada vai aparecer na tela quando você apertar no botão que gera, não ache isso estranho.
+
+Ao apertar em Copiar, vá até a parte onde você coloca os scripts "Loadstring://github..." e cole lá. Ao colar, irá aparecer outro script com um botão que vai te TELETRANSPORTAR para o destino.
+
+Teletransporte: você será APENAS teletransportado para a parte onde escaneou.
+
+Extra: para que foi feito? Imagina chegar até o final de um mapa e não precisar mais fazer nada para chegar até lá? Incrível, né?]],
+		gameLabel = "Jogo: ",
+		namePh = "Digite o nome do jogo",
+		genBtn = "Gerar script",
+		copyBtn = "Copiar script",
+		stNoChar = "Personagem não encontrado!",
+		stNoGen = "Gere o script primeiro!",
+		stCopied = "Script copiado!",
+		stReady = "Código gerado, Pronto pra ser copiado",
+		stNoClip = "Sem clipboard: copie do Output (F9)",
+		tpTitle = "Teleporte",
+		tpBtn = "Teleportar: ",
+		dest = "Destino",
+	},
+	en = {
+		langTitle = "Choose a language",
+		tutTitle = "How to use",
+		genTitle = "Teleport Generator",
+		tutText = [[Player, I will teach you how this script works.
+
+The typing bar: Type the game name, so you don't get lost.
+
+How it works: at the start there is a button called "Generate script". Press it only ONCE, and then press Copy script. Nothing will appear on screen when you press the generate button, don't find that strange.
+
+When you press Copy, go to the place where you put scripts "Loadstring://github..." and paste it there. When you paste, another script with a button will appear that will TELEPORT you to the destination.
+
+Teleport: you will ONLY be teleported to the place where you scanned.
+
+Extra: what was it made for? Imagine reaching the end of a map and not having to do anything else to get there? Amazing, right?]],
+		gameLabel = "Game: ",
+		namePh = "Type the game name",
+		genBtn = "Generate script",
+		copyBtn = "Copy script",
+		stNoChar = "Character not found!",
+		stNoGen = "Generate the script first!",
+		stCopied = "Script copied!",
+		stReady = "Generated code, Ready to be copied",
+		stNoClip = "No clipboard: copy from Output (F9)",
+		tpTitle = "Teleport",
+		tpBtn = "Teleport: ",
+		dest = "Destination",
+	},
+	es = {
+		langTitle = "Elige el idioma",
+		tutTitle = "Cómo usar",
+		genTitle = "Generador de Teletransporte",
+		tutText = [[Jugador, te enseñaré cómo funciona este script.
+
+La barra de escritura: escribe el nombre del juego, para no perderte.
+
+Cómo funciona: al inicio hay un botón llamado "Generar script". Presiónalo solo UNA vez y luego presiona Copiar script. No aparecerá nada en pantalla al presionar el botón de generar, no te parezca extraño.
+
+Al presionar Copiar, ve al lugar donde pones los scripts "Loadstring://github..." y pégalo allí. Al pegarlo, aparecerá otro script con un botón que te TELETRANSPORTARÁ al destino.
+
+Teletransporte: serás teletransportado SOLO al lugar donde escaneaste.
+
+Extra: ¿para qué se hizo? Imagina llegar al final de un mapa y no tener que hacer nada más para llegar hasta allí. ¡Increíble, verdad?]],
+		gameLabel = "Juego: ",
+		namePh = "Escribe el nombre del juego",
+		genBtn = "Generar script",
+		copyBtn = "Copiar script",
+		stNoChar = "¡Personaje no encontrado!",
+		stNoGen = "¡Genera el script primero!",
+		stCopied = "¡Script copiado!",
+		stReady = "Código generado, Listo para ser copiado",
+		stNoClip = "Sin portapapeles: copia desde Output (F9)",
+		tpTitle = "Teletransporte",
+		tpBtn = "Teletransportar: ",
+		dest = "Destino",
+	},
+}
+
+-- ========== ESTADO ==========
+local gui = nil
+local busy = false
+local transitioning = false
+local generated = nil
+local lang = "pt"
+local statusKey = nil
+local current = nil
+local titleLbl = nil
+local gameName = "Desconhecido"
+local refresh = {}
+local pageTitle = {}
+local pageScale = {}
+
+-- ========== FUNÇÕES AUXILIARES ==========
+local function playSound(id, vol)
+	if not gui then return end
+	local s = Instance.new("Sound")
+	s.SoundId = id
+	s.Volume = vol or 0.5
+	s.Parent = gui
+	s:Play()
+	Debris:AddItem(s, 6)
+end
+
+local function tween(obj, time, props, style, dir)
+	local info = TweenInfo.new(time, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out)
+	local t = TweenService:Create(obj, info, props)
+	t:Play()
+	return t
+end
+
+local function hover(btn, normal, over)
+	btn.MouseEnter:Connect(function()
+		playSound(SND.hover, 0.15)
+		tween(btn, 0.15, { BackgroundTransparency = over })
+	end)
+	btn.MouseLeave:Connect(function()
+		tween(btn, 0.15, { BackgroundTransparency = normal })
+	end)
+end
+
+local function makeButton(text, parentFrame, order)
+	local b = Instance.new("TextButton")
+	b.LayoutOrder = order
+	b.Size = UDim2.new(1, 0, 0, 32)
+	b.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	b.BackgroundTransparency = 0.82
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = false
+	b.Font = Enum.Font.GothamSemibold
+	b.Text = text
+	b.TextColor3 = TEXT
+	b.TextSize = 14
+	local s = Instance.new("UIStroke")
+	s.Color = ACCENT
+	s.Transparency = 0.5
+	s.Thickness = 1
+	s.Parent = b
+	b.Parent = parentFrame
+	hover(b, 0.82, 0.62)
+	return b
+end
+
+local function fill(tpl, map)
+	return (tpl:gsub("{{(%w+)}}", function(k) return map[k] end))
+end
+
+-- Sistema de tradução
+local function onLang(fn)
+	table.insert(refresh, fn)
+end
+
+local function refreshTitle()
+	if current and titleLbl then
+		titleLbl.Text = T[lang][pageTitle[current]]
+	end
+end
+
+local function applyLang()
+	local d = T[lang]
+	for _, fn in ipairs(refresh) do
+		fn(d)
+	end
+	refreshTitle()
+end
+
+-- ========== TEMPLATE DO SCRIPT GERADO ==========
+local TEMPLATE = [==[
+-- Script de teleporte gerado automaticamente
+-- LocalScript (use em executor ou em StarterPlayerScripts)
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Debris = game:GetService("Debris")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local parent = (gethui and gethui()) or playerGui
+
+-- Coordenadas capturadas
+local DESTINO = Vector3.new({{X}}, {{Y}}, {{Z}})
+local NOME = {{NOME}}
+
+local SND = {
+	hover = "rbxasset://sounds/electronicpingshort.wav",
+	click = "rbxasset://sounds/snap.wav",
+	open = "rbxasset://sounds/swoosh.wav",
+	teleport = "rbxasset://sounds/swoosh.wav",
+	error = "rbxasset://sounds/bass.wav",
+}
+
+local FULL = UDim2.fromOffset(230, 86)
+local MIN = UDim2.fromOffset(230, 30)
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "TeleportMenu"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = parent
+
+local function playSound(id, vol)
+	local s = Instance.new("Sound")
+	s.SoundId = id
+	s.Volume = vol or 0.5
+	s.Parent = gui
+	s:Play()
+	Debris:AddItem(s, 6)
+end
+
+local function tween(obj, time, props, style, dir)
+	local info = TweenInfo.new(time, style or Enum.EasingStyle.Quad, dir or Enum.EasingDirection.Out)
+	local t = TweenService:Create(obj, info, props)
+	t:Play()
+	return t
+end
+
+local function hover(btn, normal, over)
+	btn.MouseEnter:Connect(function()
+		playSound(SND.hover, 0.15)
+		tween(btn, 0.15, { BackgroundTransparency = over })
+	end)
+	btn.MouseLeave:Connect(function()
+		tween(btn, 0.15, { BackgroundTransparency = normal })
+	end)
+end
+
+local main = Instance.new("Frame")
+main.AnchorPoint = Vector2.new(0.5, 0.5)
+main.Position = UDim2.fromScale(0.5, 0.5)
+main.Size = FULL
+main.BackgroundColor3 = Color3.fromRGB(20, 26, 40)
+main.BackgroundTransparency = 0.2
+main.BorderSizePixel = 0
+main.ClipsDescendants = true
+main.Parent = gui
+
+local scale = Instance.new("UIScale")
+scale.Parent = main
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 6)
+corner.Parent = main
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(255, 255, 255)
+stroke.Transparency = 0.55
+stroke.Thickness = 1.5
+stroke.Parent = main
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 30)
+titleBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+titleBar.BackgroundTransparency = 0.9
+titleBar.BorderSizePixel = 0
+titleBar.Parent = main
+
+local title = Instance.new("TextLabel")
+title.BackgroundTransparency = 1
+title.Position = UDim2.fromOffset(8, 0)
+title.Size = UDim2.new(1, -40, 1, 0)
+title.Font = Enum.Font.GothamBold
+title.Text = "{{TPTITLE}}"
+title.TextColor3 = Color3.fromRGB(235, 240, 255)
+title.TextSize = 13
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = titleBar
+
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.fromOffset(24, 24)
+minBtn.Position = UDim2.new(1, -28, 0.5, -12)
+minBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+minBtn.BackgroundTransparency = 0.85
+minBtn.BorderSizePixel = 0
+minBtn.AutoButtonColor = false
+minBtn.Font = Enum.Font.GothamBold
+minBtn.Text = "–"
+minBtn.TextColor3 = Color3.fromRGB(235, 240, 255)
+minBtn.TextSize = 16
+minBtn.Parent = titleBar
+hover(minBtn, 0.85, 0.6)
+
+local body = Instance.new("Frame")
+body.Position = UDim2.fromOffset(0, 30)
+body.Size = UDim2.new(1, 0, 1, -30)
+body.BackgroundTransparency = 1
+body.Parent = main
+
+local tp = Instance.new("TextButton")
+tp.Position = UDim2.fromOffset(8, 6)
+tp.Size = UDim2.new(1, -16, 0, 30)
+tp.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+tp.BackgroundTransparency = 0.82
+tp.BorderSizePixel = 0
+tp.AutoButtonColor = false
+tp.Font = Enum.Font.GothamSemibold
+tp.Text = "{{TPBTN}}" .. NOME
+tp.TextColor3 = Color3.fromRGB(235, 240, 255)
+tp.TextSize = 13
+tp.TextTruncate = Enum.TextTruncate.AtEnd
+tp.Parent = body
+
+local tpStroke = Instance.new("UIStroke")
+tpStroke.Color = Color3.fromRGB(120, 200, 255)
+tpStroke.Transparency = 0.5
+tpStroke.Thickness = 1
+tpStroke.Parent = tp
+
+hover(tp, 0.82, 0.62)
+
+local busy = false
+tp.MouseButton1Click:Connect(function()
+	if busy then return end
+	busy = true
+	playSound(SND.click, 0.6)
+
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		playSound(SND.error, 0.6)
+		busy = false
+		return
+	end
+
+	playSound(SND.teleport, 0.8)
+	tween(scale, 0.12, { Scale = 0.9 })
+	task.wait(0.12)
+
+	local c = player.Character
+	local h = c and c:FindFirstChild("HumanoidRootPart")
+	if h then
+		h.AssemblyLinearVelocity = Vector3.zero
+		h.CFrame = CFrame.new(DESTINO)
+	end
+
+	tween(scale, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
+	busy = false
+end)
+
+local dragging = false
+local dragStart, startPos
+
+titleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = main.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - dragStart
+		main.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
+	end
+end)
+
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	playSound(minimized and SND.click or SND.open, 0.6)
+	if minimized then
+		minBtn.Text = "+"
+		tween(main, 0.3, { Size = MIN }, Enum.EasingStyle.Quint)
+		task.delay(0.15, function()
+			if minimized then body.Visible = false end
+		end)
+	else
+		minBtn.Text = "–"
+		body.Visible = true
+		tween(main, 0.3, { Size = FULL }, Enum.EasingStyle.Quint)
+	end
+end)
+]==]
+
+-- ========== GUI DO GERADOR ==========
+gui = Instance.new("ScreenGui")
+gui.Name = "TeleportGenerator"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = parent
+
+local main = Instance.new("Frame")
+main.Name = "Main"
+main.AnchorPoint = Vector2.new(0.5, 0.5)
+main.Position = UDim2.fromScale(0.5, 0.5)
+main.Size = FULL_SIZE
+main.BackgroundColor3 = GLASS
+main.BackgroundTransparency = 0.2
+main.BorderSizePixel = 0
+main.ClipsDescendants = true
+main.Parent = gui
+
+local scale = Instance.new("UIScale")
+scale.Parent = main
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 6)
+mainCorner.Parent = main
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(255, 255, 255)
+mainStroke.Transparency = 0.55
+mainStroke.Thickness = 1.5
+mainStroke.Parent = main
+
+local mainGrad = Instance.new("UIGradient")
+mainGrad.Rotation = 135
+mainGrad.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(180, 200, 255))
+mainGrad.Transparency = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 0.7),
+	NumberSequenceKeypoint.new(0.5, 0.92),
+	NumberSequenceKeypoint.new(1, 0.8),
+})
+mainGrad.Parent = main
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 32)
+titleBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+titleBar.BackgroundTransparency = 0.9
+titleBar.BorderSizePixel = 0
+titleBar.Parent = main
+
+titleLbl = Instance.new("TextLabel")
+titleLbl.BackgroundTransparency = 1
+titleLbl.Position = UDim2.fromOffset(10, 0)
+titleLbl.Size = UDim2.new(1, -40, 1, 0)
+titleLbl.Font = Enum.Font.GothamBold
+titleLbl.Text = ""
+titleLbl.TextColor3 = TEXT
+titleLbl.TextSize = 13
+titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+titleLbl.Parent = titleBar
+
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.fromOffset(24, 24)
+minBtn.Position = UDim2.new(1, -28, 0.5, -12)
+minBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+minBtn.BackgroundTransparency = 0.85
+minBtn.BorderSizePixel = 0
+minBtn.AutoButtonColor = false
+minBtn.Font = Enum.Font.GothamBold
+minBtn.Text = "–"
+minBtn.TextColor3 = TEXT
+minBtn.TextSize = 16
+minBtn.Parent = titleBar
+hover(minBtn, 0.85, 0.6)
+
+local body = Instance.new("Frame")
+body.Position = UDim2.fromOffset(0, 32)
+body.Size = UDim2.new(1, 0, 1, -32)
+body.BackgroundTransparency = 1
+body.ClipsDescendants = true
+body.Parent = main
+
+-- ========== PÁGINAS ==========
+local function newPage(titleKey)
+	local p = Instance.new("Frame")
+	p.AnchorPoint = Vector2.new(0.5, 0.5)
+	p.Position = UDim2.fromScale(0.5, 0.5)
+	p.Size = UDim2.fromScale(1, 1)
+	p.BackgroundTransparency = 1
+	p.Visible = false
+	p.Parent = body
+	local s = Instance.new("UIScale")
+	s.Parent = p
+	pageScale[p] = s
+	pageTitle[p] = titleKey
+	return p
+end
+
+-- ----- Página 1: Idioma -----
+local langPage = newPage("langTitle")
+
+local langPad = Instance.new("UIPadding")
+langPad.PaddingLeft = UDim.new(0, 16)
+langPad.PaddingRight = UDim.new(0, 16)
+langPad.PaddingTop = UDim.new(0, 14)
+langPad.Parent = langPage
+
+local langLayout = Instance.new("UIListLayout")
+langLayout.SortOrder = Enum.SortOrder.LayoutOrder
+langLayout.Padding = UDim.new(0, 8)
+langLayout.Parent = langPage
+
+local btnPT = makeButton("Português", langPage, 1)
+local btnEN = makeButton("English", langPage, 2)
+local btnES = makeButton("Español", langPage, 3)
+btnPT.Size = UDim2.new(1, 0, 0, 36)
+btnEN.Size = UDim2.new(1, 0, 0, 36)
+btnES.Size = UDim2.new(1, 0, 0, 36)
+
+-- ----- Página 2: Tutorial -----
+local tutPage = newPage("tutTitle")
+
+local tutScroll = Instance.new("ScrollingFrame")
+tutScroll.Position = UDim2.fromOffset(10, 8)
+tutScroll.Size = UDim2.new(1, -20, 1, -48)
+tutScroll.BackgroundTransparency = 1
+tutScroll.BorderSizePixel = 0
+tutScroll.ScrollBarThickness = 4
+tutScroll.ScrollBarImageColor3 = ACCENT
+tutScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+tutScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+tutScroll.Parent = tutPage
+
+local tutText = Instance.new("TextLabel")
+tutText.Size = UDim2.new(1, -8, 0, 0)
+tutText.AutomaticSize = Enum.AutomaticSize.Y
+tutText.BackgroundTransparency = 1
+tutText.Font = Enum.Font.Gotham
+tutText.TextSize = 13
+tutText.TextColor3 = TEXT
+tutText.TextWrapped = true
+tutText.TextXAlignment = Enum.TextXAlignment.Left
+tutText.TextYAlignment = Enum.TextYAlignment.Top
+tutText.Text = ""
+tutText.Parent = tutScroll
+
+local function updateTutCanvas()
+	tutScroll.CanvasSize = UDim2.new(0, 0, 0, tutText.AbsoluteSize.Y + 12)
+end
+tutText:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateTutCanvas)
+tutText:GetPropertyChangedSignal("TextBounds"):Connect(updateTutCanvas)
+updateTutCanvas()
+
+local xBtn = makeButton("X", tutPage, 1)
+xBtn.Position = UDim2.new(0, 10, 1, -38)
+xBtn.Size = UDim2.new(1, -20, 0, 30)
+
+-- ----- Página 3: Gerador -----
+local genPage = newPage("genTitle")
+
+local genPad = Instance.new("UIPadding")
+genPad.PaddingLeft = UDim.new(0, 10)
+genPad.PaddingRight = UDim.new(0, 10)
+genPad.PaddingTop = UDim.new(0, 8)
+genPad.Parent = genPage
+
+local genLayout = Instance.new("UIListLayout")
+genLayout.SortOrder = Enum.SortOrder.LayoutOrder
+genLayout.Padding = UDim.new(0, 5)
+genLayout.Parent = genPage
+
+local gameLabel = Instance.new("TextLabel")
+gameLabel.LayoutOrder = 1
+gameLabel.Size = UDim2.new(1, 0, 0, 16)
+gameLabel.BackgroundTransparency = 1
+gameLabel.Font = Enum.Font.GothamSemibold
+gameLabel.TextSize = 12
+gameLabel.TextColor3 = ACCENT
+gameLabel.TextXAlignment = Enum.TextXAlignment.Left
+gameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+gameLabel.Text = ""
+gameLabel.Parent = genPage
+
+local nameBox = Instance.new("TextBox")
+nameBox.LayoutOrder = 2
+nameBox.Size = UDim2.new(1, 0, 0, 30)
+nameBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+nameBox.BackgroundTransparency = 0.5
+nameBox.BorderSizePixel = 0
+nameBox.ClearTextOnFocus = false
+nameBox.Font = Enum.Font.Gotham
+nameBox.PlaceholderColor3 = MUTED
+nameBox.Text = ""
+nameBox.TextColor3 = TEXT
+nameBox.TextSize = 13
+nameBox.TextXAlignment = Enum.TextXAlignment.Left
+nameBox.Parent = genPage
+
+local nameBoxPad = Instance.new("UIPadding")
+nameBoxPad.PaddingLeft = UDim.new(0, 8)
+nameBoxPad.Parent = nameBox
+
+local genBtn = makeButton("", genPage, 3)
+
+local status = Instance.new("TextLabel")
+status.LayoutOrder = 4
+status.Size = UDim2.new(1, 0, 0, 24)
+status.BackgroundTransparency = 1
+status.Font = Enum.Font.Gotham
+status.TextSize = 12
+status.TextWrapped = true
+status.TextXAlignment = Enum.TextXAlignment.Left
+status.TextYAlignment = Enum.TextYAlignment.Top
+status.TextColor3 = MUTED
+status.Text = ""
+status.Parent = genPage
+
+local copyBtn = makeButton("", genPage, 5)
+copyBtn.TextColor3 = MUTED
+
+-- Atualização dinâmica do nome do jogo ao digitar
+nameBox:GetPropertyChangedSignal("Text"):Connect(function()
+	local typed = nameBox.Text
+	if typed == "" then
+		gameName = "Desconhecido"
+	else
+		gameName = typed
+	end
+	gameLabel.Text = T[lang].gameLabel .. gameName
+end)
+
+-- Registro de traduções
+onLang(function(d)
+	tutText.Text = d.tutText
+	gameLabel.Text = d.gameLabel .. gameName
+	nameBox.PlaceholderText = d.namePh
+	genBtn.Text = d.genBtn
+	copyBtn.Text = d.copyBtn
+	if statusKey then
+		status.Text = d[statusKey]
+	end
+end)
+
+local function setStatus(key, isErr)
+	statusKey = key
+	status.Text = T[lang][key]
+	status.TextColor3 = isErr and ERROR or GREEN
+end
+
+-- ========== TROCA DE PÁGINA ==========
+local function goPage(to)
+	if transitioning or to == current then return end
+	transitioning = true
+
+	local prev = current
+	current = to
+	if prev then
+		local ps = pageScale[prev]
+		local t = tween(ps, 0.2, { Scale = 0 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		t.Completed:Wait()
+		prev.Visible = false
+	end
+
+	to.Visible = true
+	pageScale[to].Scale = 0
+	tween(pageScale[to], 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
+	refreshTitle()
+
+	transitioning = false
+end
+
+-- ========== EFEITOS ==========
+local function explosion(center)
+	playSound(SND.boom, 0.8)
+
+	local flash = Instance.new("Frame")
+	flash.AnchorPoint = Vector2.new(0.5, 0.5)
+	flash.Position = center
+	flash.Size = UDim2.fromOffset(0, 0)
+	flash.BackgroundColor3 = Color3.fromRGB(255, 240, 200)
+	flash.BackgroundTransparency = 0.1
+	flash.BorderSizePixel = 0
+	flash.ZIndex = 11
+	flash.Parent = gui
+	local fc = Instance.new("UICorner")
+	fc.CornerRadius = UDim.new(1, 0)
+	fc.Parent = flash
+	tween(flash, 0.5, { Size = UDim2.fromOffset(420, 420), BackgroundTransparency = 1 })
+	Debris:AddItem(flash, 0.7)
+
+	local count = 14
+	for i = 1, count do
+		local p = Instance.new("Frame")
+		p.AnchorPoint = Vector2.new(0.5, 0.5)
+		p.Position = center
+		p.Size = UDim2.fromOffset(8, 8)
+		p.BackgroundColor3 = Color3.fromHSV(math.random(), 0.3, 1)
+		p.BorderSizePixel = 0
+		p.ZIndex = 12
+		p.Parent = gui
+
+		local angle = (i / count) * math.pi * 2
+		local dist = math.random(120, 220)
+		tween(p, 0.6, {
+			Position = center + UDim2.fromOffset(math.cos(angle) * dist, math.sin(angle) * dist),
+			BackgroundTransparency = 1,
+			Rotation = math.random(-360, 360),
+		})
+		Debris:AddItem(p, 0.7)
+	end
+end
+
+local function playBlackHole()
+	local center = main.Position
+	playSound(SND.hole, 0.8)
+
+	local hole = Instance.new("Frame")
+	hole.AnchorPoint = Vector2.new(0.5, 0.5)
+	hole.Position = center
+	hole.Size = UDim2.fromOffset(0, 0)
+	hole.BackgroundColor3 = Color3.new(0, 0, 0)
+	hole.BorderSizePixel = 0
+	hole.ZIndex = 10
+	hole.Parent = gui
+
+	local hc = Instance.new("UICorner")
+	hc.CornerRadius = UDim.new(1, 0)
+	hc.Parent = hole
+
+	local glow = Instance.new("UIStroke")
+	glow.Color = Color3.fromRGB(170, 90, 255)
+	glow.Thickness = 3
+	glow.Transparency = 0.2
+	glow.Parent = hole
+
+	local ring = Instance.new("Frame")
+	ring.AnchorPoint = Vector2.new(0.5, 0.5)
+	ring.Position = center
+	ring.Size = UDim2.fromOffset(170, 170)
+	ring.BackgroundTransparency = 1
+	ring.ZIndex = 11
+	ring.Parent = gui
+
+	local rc = Instance.new("UICorner")
+	rc.CornerRadius = UDim.new(1, 0)
+	rc.Parent = ring
+
+	local rs = Instance.new("UIStroke")
+	rs.Color = Color3.fromRGB(170, 90, 255)
+	rs.Thickness = 2
+	rs.Transparency = 0.6
+	rs.Parent = ring
+
+	local rScale = Instance.new("UIScale")
+	rScale.Scale = 0
+	rScale.Parent = ring
+
+	local COLS = {
+		Color3.fromRGB(190, 120, 255),
+		Color3.fromRGB(255, 170, 90),
+		Color3.fromRGB(120, 200, 255),
+	}
+	local COUNT = 16
+	for i = 1, COUNT do
+		local a = (i / COUNT) * math.pi * 2
+		local sz = (i % 3 == 0) and 9 or 6
+		local dot = Instance.new("Frame")
+		dot.AnchorPoint = Vector2.new(0.5, 0.5)
+		dot.Size = UDim2.fromOffset(sz, sz)
+		dot.Position = UDim2.fromOffset(85 + math.cos(a) * 80, 85 + math.sin(a) * 80)
+		dot.BackgroundColor3 = COLS[(i % #COLS) + 1]
+		dot.BorderSizePixel = 0
+		dot.ZIndex = 11
+		dot.Parent = ring
+
+		local dc = Instance.new("UICorner")
+		dc.CornerRadius = UDim.new(1, 0)
+		dc.Parent = dot
+	end
+
+	tween(rScale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
+	local spin = TweenService:Create(
+		ring,
+		TweenInfo.new(1.2, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1),
+		{ Rotation = 360 }
+	)
+	spin:Play()
+
+	tween(hole, 0.5, { Size = UDim2.fromOffset(140, 140) }, Enum.EasingStyle.Back)
+	tween(scale, 0.8, { Scale = 0 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	tween(main, 0.8, { Rotation = 720 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+	task.wait(0.8)
+	main.Visible = false
+
+	spin:Cancel()
+	local collapse = tween(hole, 0.3, { Size = UDim2.fromOffset(0, 0) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	tween(rScale, 0.3, { Scale = 0 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	collapse.Completed:Wait()
+	hole:Destroy()
+	ring:Destroy()
+
+	explosion(center)
+
+	main.Rotation = 0
+	scale.Scale = 0
+	main.Visible = true
+	tween(scale, 0.6, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+end
+
+-- ========== AÇÕES ==========
+local function generate()
+	local d = T[lang]
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		playSound(SND.error, 0.6)
+		setStatus("stNoChar", true)
+		return
+	end
+
+	local label = nameBox.Text:match("^%s*(.-)%s*$")
+	if label == "" then label = d.dest end
+
+	local p = hrp.Position
+	generated = fill(TEMPLATE, {
+		X = string.format("%.3f", p.X),
+		Y = string.format("%.3f", p.Y),
+		Z = string.format("%.3f", p.Z),
+		NOME = string.format("%q", label),
+		TPTITLE = d.tpTitle,
+		TPBTN = d.tpBtn,
+	})
+
+	setStatus("stReady", false)
+	copyBtn.TextColor3 = TEXT
+	playSound(SND.success, 0.6)
+end
+
+local function copyScript()
+	if busy then return end
+	if not generated then
+		playSound(SND.error, 0.6)
+		setStatus("stNoGen", true)
+		return
+	end
+
+	busy = true
+	local ok = false
+	if setclipboard then
+		ok = pcall(setclipboard, generated)
+	end
+
+	if ok then
+		playSound(SND.copy, 0.7)
+		setStatus("stCopied", false)
+	else
+		print(generated)
+		setStatus("stNoClip", true)
+	end
+
+	playBlackHole()
+	busy = false
+end
+
+-- ========== BOTÕES ==========
+local function pickLang(code)
+	if transitioning then return end
+	lang = code
+	applyLang()
+	playSound(SND.click, 0.6)
+	goPage(tutPage)
+end
+
+btnPT.MouseButton1Click:Connect(function() pickLang("pt") end)
+btnEN.MouseButton1Click:Connect(function() pickLang("en") end)
+btnES.MouseButton1Click:Connect(function() pickLang("es") end)
+
+xBtn.MouseButton1Click:Connect(function()
+	if transitioning then return end
+	playSound(SND.click, 0.6)
+	goPage(genPage)
+end)
+
+genBtn.MouseButton1Click:Connect(function()
+	playSound(SND.click, 0.6)
+	generate()
+end)
+
+copyBtn.MouseButton1Click:Connect(function()
+	playSound(SND.click, 0.6)
+	copyScript()
+end)
+
+-- ========== ARRASTAR ==========
+local dragging = false
+local dragStart, startPos
+
+titleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = main.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - dragStart
+		main.Position = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
+	end
+end)
+
+-- ========== MINIMIZAR ==========
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	playSound(minimized and SND.click or SND.open, 0.6)
+	if minimized then
+		minBtn.Text = "+"
+		tween(main, 0.3, { Size = MIN_SIZE }, Enum.EasingStyle.Quint)
+		task.delay(0.15, function()
+			if minimized then body.Visible = false end
+		end)
+	else
+		minBtn.Text = "–"
+		body.Visible = true
+		tween(main, 0.3, { Size = FULL_SIZE }, Enum.EasingStyle.Quint)
+	end
+end)
+
+-- ========== INICIALIZAÇÃO ==========
+applyLang()
+
+current = langPage
+langPage.Visible = true
+pageScale[langPage].Scale = 1
+refreshTitle()
+
+playSound(SND.open, 0.5)
